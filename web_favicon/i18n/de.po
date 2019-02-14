@@ -30,12 +30,14 @@ msgstr "Favicon"
 
 #. module: web_favicon
 #: model:ir.model.fields,field_description:web_favicon.field_res_company_favicon_backend
-msgid "Favicon backend"
+#, fuzzy
+msgid "Favicon Backend"
 msgstr "Icon"
 
 #. module: web_favicon
 #: model:ir.model.fields,field_description:web_favicon.field_res_company_favicon_backend_mimetype
-msgid "Favicon backend mimetype"
+#, fuzzy
+msgid "Favicon Backend Mimetype"
 msgstr "MIME-Type"
 
 #. module: web_favicon

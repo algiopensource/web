@@ -1,14 +1,14 @@
-# -*- coding: utf-8 -*-
 # Copyright 2016 ACSONE SA/NV (<http://acsone.eu>)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl.html).
 
 {
     'name': "Web timeline",
     'summary': "Interactive visualization chart to show events in time",
-    "version": "10.0.1.2.1",
+    "version": "11.0.1.4.1",
     'author': 'ACSONE SA/NV, '
               'Tecnativa, '
               'Monk Software, '
+              'Onestein, '
               'Odoo Community Association (OCA)',
     "category": "web",
     "license": "AGPL-3",

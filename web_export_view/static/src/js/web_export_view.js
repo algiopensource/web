@@ -3,18 +3,25 @@ odoo.define('web_export_view', function (require) {
 
     var core = require('web.core');
     var Sidebar = require('web.Sidebar');
+    var session = require('web.session');
+    var crash_manager = require('web.crash_manager');
+
     var QWeb = core.qweb;
 
     var _t = core._t;
 
     Sidebar.include({
 
-        redraw: function () {
+        _redraw: function () {
             var self = this;
             this._super.apply(this, arguments);
-            if (self.getParent().ViewManager.active_view.type == 'list') {
-                self.$el.find('.o_dropdown').last().append(QWeb.render('WebExportTreeViewXls', {widget: self}));
-                self.$el.find('.export_treeview_xls').on('click', self.on_sidebar_export_treeview_xls);
+            if (self.getParent().renderer.viewType == 'list') {
+                session.user_has_group('web_export_view.group_disallow_export_view_data_excel').then(function (has_group) {
+                    if (!has_group) {
+                        self.$el.find('.o_dropdown').last().append(QWeb.render('WebExportTreeViewXls', { widget: self }));
+                        self.$el.find('.export_treeview_xls').on('click', self.on_sidebar_export_treeview_xls);
+                    }
+                });
             }
         },
 
@@ -24,6 +31,8 @@ odoo.define('web_export_view', function (require) {
             var self = this,
                 view = this.getParent(),
                 children = view.getChildren();
+            var c = crash_manager;
+
             if (children) {
                 children.every(function (child) {
                     if (child.field && child.field.type == 'one2many') {
@@ -39,23 +48,27 @@ odoo.define('web_export_view', function (require) {
             }
             var export_columns_keys = [];
             var export_columns_names = [];
-            $.each(view.visible_columns, function () {
-                if (this.tag == 'field' && (this.widget === undefined || this.widget != 'handle')) {
+            var column_index = 0;
+            var column_header_selector;
+            $.each(view.renderer.columns, function () {
+                if (this.tag == 'field' && (this.attrs.widget === undefined || this.attrs.widget != 'handle')) {
                     // non-fields like `_group` or buttons
-                    export_columns_keys.push(this.id);
-                    export_columns_names.push(this.string);
+                    export_columns_keys.push(column_index);
+                    column_header_selector = '.o_list_view > thead > tr> th:not([class*="o_list_record_selector"]):eq('+column_index+')';
+                    export_columns_names.push(view.$el.find(column_header_selector)[0].textContent);
                 }
+                column_index ++;
             });
             var export_rows = [];
             $.blockUI();
             if (children) {
                 // find only rows with data
-                view.$el.find('.o_list_view > tbody > tr[data-id]:has(.o_list_record_selector input:checkbox:checked)')
+                view.$el.find('.o_list_view > tbody > tr.o_data_row:has(.o_list_record_selector input:checkbox:checked)')
                 .each(function () {
                     var $row = $(this);
                     var export_row = [];
                     $.each(export_columns_keys, function () {
-                        var $cell = $row.find('td[data-field="' + this + '"]')
+                        var $cell = $row.find('td.o_data_cell:eq('+this+')')
                         var $cellcheckbox = $cell.find('.o_checkbox input:checkbox');
                         if ($cellcheckbox.length) {
                             export_row.push(
@@ -65,7 +78,11 @@ odoo.define('web_export_view', function (require) {
                         }
                         else {
                             var text = $cell.text().trim();
-                            if ($cell.hasClass("o_list_number")) {
+                            var is_number = (
+                                $cell.hasClass('o_list_number') &&
+                                !$cell.hasClass('o_float_time_cell')
+                            );
+                            if (is_number) {
                                 export_row.push(parseFloat(
                                     text
                                     // Remove thousands separator
@@ -76,8 +93,7 @@ odoo.define('web_export_view', function (require) {
                                     // Remove non-numeric characters
                                     .replace(/[^\d\.-]/g, "")
                                 ));
-                            }
-                            else {
+                            } else {
                                 export_row.push(text);
                             }
                         }
@@ -85,14 +101,16 @@ odoo.define('web_export_view', function (require) {
                     export_rows.push(export_row);
                 });
             }
-            view.session.get_file({
+
+            session.get_file({
                 url: '/web/export/xls_view',
                 data: {data: JSON.stringify({
-                    model: view.model,
+                    model: view.modelName,
                     headers: export_columns_names,
                     rows: export_rows
                 })},
-                complete: $.unblockUI
+                complete: $.unblockUI,
+                error: c.rpc_error.bind(c)
             });
         }
 

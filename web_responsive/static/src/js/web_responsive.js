@@ -5,13 +5,17 @@ odoo.define('web_responsive', function(require) {
     'use strict';
 
     var Menu = require('web.Menu');
-    var Class = require('web.Class');
-    var DataModel = require('web.DataModel');
+    var rpc = require('web.rpc');
     var SearchView = require('web.SearchView');
     var core = require('web.core');
     var config = require('web.config');
-    var FieldOne2Many = core.form_widget_registry.get('one2many');
+    var session = require('web.session');
     var ViewManager = require('web.ViewManager');
+    var RelationalFields = require('web.relational_fields');
+    var FormRenderer = require('web.FormRenderer');
+    var Widget = require('web.Widget');
+
+    var qweb = core.qweb;
 
     Menu.include({
 
@@ -25,19 +29,21 @@ odoo.define('web_responsive', function(require) {
          */
         open_menu: function(id, allowOpen) {
             this._super(id);
-            if (allowOpen) return;
+            if (allowOpen) {
+                return;
+            }
             var $clicked_menu = this.$secondary_menus.find('a[data-menu=' + id + ']');
             $clicked_menu.parents('.oe_secondary_submenu').css('display', '');
-        },
+        }
 
     });
 
     SearchView.include({
 
         // Prevent focus of search field on mobile devices
-        toggle_visibility: function (is_visible) {
-            $('div.oe_searchview_input').last()
-                .one('focus', $.proxy(this.preventMobileFocus, this));
+        toggle_visibility: function(is_visible) {
+            $('div.oe_searchview_input').last().one(
+              'focus', $.proxy(this.preventMobileFocus, this));
             return this._super(is_visible);
         },
 
@@ -49,18 +55,17 @@ odoo.define('web_responsive', function(require) {
         },
 
         // For lack of Modernizr, TouchEvent will do
-        isMobile: function () {
-            try{
+        isMobile: function() {
+            try {
                 document.createEvent('TouchEvent');
                 return true;
             } catch (ex) {
                 return false;
             }
-        },
-
+        }
     });
 
-    var AppDrawer = Class.extend({
+    var AppDrawer = Widget.extend({
 
         /* Provides all features inside of the application drawer navigation.
 
@@ -98,7 +103,7 @@ odoo.define('web_responsive', function(require) {
         searching: false,
 
         init: function() {
-
+            this._super.apply(this, arguments);
             this.directionCodes = {
                 'left': this.LEFT,
                 'right': this.RIGHT,
@@ -107,7 +112,7 @@ odoo.define('web_responsive', function(require) {
                 'down': this.DOWN,
                 'pagedown': this.DOWN,
                 '+': this.RIGHT,
-                '-': this.LEFT,
+                '-': this.LEFT
             };
             this.$searchAction = $('.app-drawer-search-action');
             this.$searchAction.hide();
@@ -116,23 +121,20 @@ odoo.define('web_responsive', function(require) {
             this.initDrawer();
             this.handleWindowResize();
             var $clickZones = $('.odoo_webclient_container, ' +
-                                'a.oe_menu_leaf, ' +
-                                'a.oe_menu_toggler, ' +
-                                'a.oe_logo, ' +
-                                'i.oe_logo_edit'
-                                );
-
+                'a.oe_menu_leaf, ' +
+                'a.oe_menu_toggler, ' +
+                'a.oe_logo, ' +
+                'i.oe_logo_edit'
+            );
             $clickZones.click($.proxy(this.handleClickZones, this));
-
             this.$searchResultsContainer.click($.proxy(this.searchMenus, this));
-
             this.$el.find('.drawer-search-open').click(
                 $.proxy(this.searchMenus, this)
             );
             this.$el.find('.drawer-search-close').hide().click(
                 $.proxy(this.closeSearchMenus, this)
             );
-
+            this.filter_timeout = $.Deferred();
             core.bus.on('resize', this, this.handleWindowResize);
             core.bus.on('keydown', this, this.handleKeyDown);
             core.bus.on('keyup', this, this.redirectKeyPresses);
@@ -144,6 +146,7 @@ odoo.define('web_responsive', function(require) {
             this.$el = $('.drawer');
             this.$el.drawer();
             this.$el.one('drawer.opened', $.proxy(this.onDrawerOpen, this));
+
             // Setup the iScroll options.
             // You should be able to pass these to ``.drawer``, but scroll freezes.
             this.$el.on(
@@ -197,23 +200,23 @@ odoo.define('web_responsive', function(require) {
             }
             var directionCode = $.hotkeys.specialKeys[e.keyCode.toString()];
             if (Object.keys(this.directionCodes).indexOf(directionCode) !== -1) {
-
+                var $link = false;
                 if (this.searching) {
                     var $collection = this.$el.find('#appDrawerMenuSearch a');
-                    var $link = this.findAdjacentLink(
+                    $link = this.findAdjacentLink(
                         this.$el.find('#appDrawerMenuSearch a:first, #appDrawerMenuSearch a.web-responsive-focus').last(),
                         this.directionCodes[directionCode],
                         $collection,
                         true
                     );
                 } else {
-                    var $link = this.findAdjacentLink(
+                    $link = this.findAdjacentLink(
                         this.$el.find('#appDrawerApps a:first, #appDrawerApps a.web-responsive-focus').last(),
                         this.directionCodes[directionCode]
                     );
                 }
                 this.selectLink($link);
-            } else if ($.hotkeys.specialKeys[e.keyCode.toString()] == 'esc') {
+            } else if ($.hotkeys.specialKeys[e.keyCode.toString()] === 'esc') {
                 // We either back out of the search, or close the app drawer.
                 if (this.searching) {
                     this.closeSearchMenus();
@@ -232,7 +235,6 @@ odoo.define('web_responsive', function(require) {
          * @param e The key event that was triggered by ``core.bus``.
          */
         redirectKeyPresses: function(e) {
-
             if ( !this.isOpen ) {
                 // Drawer isn't open; Ignore.
                 return;
@@ -241,8 +243,11 @@ odoo.define('web_responsive', function(require) {
             // Trigger navigation to pseudo-focused link
             // & fake a click (in case of anchor link).
             if (e.key === 'Enter') {
-                window.location.href = $('.web-responsive-focus').attr('href');
-                this.handleClickZones();
+                var href = $('.web-responsive-focus').attr('href');
+                if (!_.isUndefined(href)) {
+                    window.location.href = href;
+                    this.handleClickZones();
+                }
                 return;
             }
 
@@ -277,9 +282,8 @@ odoo.define('web_responsive', function(require) {
          * @listens ``drawer.opened`` and sends to onDrawerOpen
          */
         onDrawerClose: function() {
-            this.closeSearchMenus();
-            this.$searchAction.hide();
             core.bus.trigger('drawer.closed');
+            this.closeSearchMenus();
             this.$el.one('drawer.opened', $.proxy(this.onDrawerOpen, this));
             this.isOpen = false;
             // Remove inline style inserted by drawer.js
@@ -287,15 +291,17 @@ odoo.define('web_responsive', function(require) {
         },
 
         /* Finds app links and register event handlers
-         * @fires ``drawer.opened`` to the ``core.bus``
-         * @listens ``drawer.closed`` and sends to :meth:``onDrawerClose``
-         */
-        onDrawerOpen: function() {
+        * @fires ``drawer.opened`` to the ``core.bus``
+        * @listens ``drawer.closed`` and sends to :meth:``onDrawerClose``
+        */
+       onDrawerOpen: function() {
+            this.closeSearchMenus();
             this.$appLinks = $('.app-drawer-icon-app').parent();
             this.selectLink($(this.$appLinks[0]));
             this.$el.one('drawer.closed', $.proxy(this.onDrawerClose, this));
             core.bus.trigger('drawer.opened');
             this.isOpen = true;
+            this.$searchInput.val("");
         },
 
         // Selects a link visibly & deselects others.
@@ -306,19 +312,39 @@ odoo.define('web_responsive', function(require) {
             }
         },
 
-        /* Searches for menus by name, then triggers showFoundMenus
-         * @param query str to search
-         * @return jQuery obj
+        /**
+         * Search matching menus immediately
+         */
+        _searchMenus: function () {
+            rpc.query({
+                model: 'ir.ui.menu',
+                method: 'search_read',
+                kwargs: {
+                    fields: ['action', 'display_name', 'id'],
+                    domain: [
+                        ['name', 'ilike', this.$searchInput.val()],
+                        ['action', '!=', false],
+                    ],
+                    context: session.user_context,
+                },
+            }).then(this.showFoundMenus.bind(this));
+        },
+
+        /**
+         * Queue the next menu search for the search input
          */
         searchMenus: function() {
+            // Stop current search, if any
+            this.filter_timeout.reject();
+            this.filter_timeout = $.Deferred();
+            // Schedule a new search
+            this.filter_timeout.done(this._searchMenus.bind(this));
+            setTimeout(
+                this.filter_timeout.resolve.bind(this.filter_timeout),
+                200
+            );
+            // Focus search input
             this.$searchInput = $('#appDrawerSearchInput').focus();
-            var Menus = new DataModel('ir.ui.menu');
-            Menus.query(['action', 'display_name', 'id'])
-                .filter([['name', 'ilike', this.$searchInput.val()],
-                         ['action', '!=', false]
-                         ])
-                .all()
-                .then($.proxy(this.showFoundMenus, this));
         },
 
         /* Display the menus that are provided as input.
@@ -358,7 +384,6 @@ odoo.define('web_responsive', function(require) {
             this.$el.find('.drawer-search-open').show();
             this.$searchResultsContainer.closest('#appDrawerMenuSearch').hide();
             this.$searchAction.show();
-            $('#appDrawerSearchInput').val('');
         },
 
         /* Returns the link adjacent to $link in provided direction.
@@ -379,14 +404,14 @@ odoo.define('web_responsive', function(require) {
          */
         findAdjacentLink: function($link, direction, $objs, restrictHorizontal) {
 
-            if ($objs === undefined) {
+            if (_.isUndefined($objs)) {
                 $objs = this.$appLinks;
             }
 
             var obj = [];
-            var $rows = (restrictHorizontal) ? $objs : this.getRowObjs($link, this.$appLinks);
+            var $rows = restrictHorizontal ? $objs : this.getRowObjs($link, this.$appLinks);
 
-            switch(direction){
+            switch (direction) {
                 case this.LEFT:
                     obj = $objs[$objs.index($link) - 1];
                     if (!obj) {
@@ -431,14 +456,14 @@ odoo.define('web_responsive', function(require) {
             function filterWithin(left, right) {
                 return function() {
                     var $this = $(this),
-                        thisMiddle = $this.offset().left + ($this.width() / 2);
+                        thisMiddle = $this.offset().left + $this.width() / 2;
                     return thisMiddle >= left && thisMiddle <= right;
                 };
             }
             var left = $obj.offset().left,
                 right = left + $obj.outerWidth();
             return $grid.filter(filterWithin(left, right));
-        },
+        }
 
     });
 
@@ -450,22 +475,58 @@ odoo.define('web_responsive', function(require) {
     // if we are in small screen change default view to kanban if exists
     ViewManager.include({
         get_default_view: function() {
-            var default_view = this._super()
+            var default_view = this._super();
             if (config.device.size_class <= config.device.SIZES.XS &&
-                default_view.type != 'kanban' &&
-                this.views['kanban'])
-                {
-                    default_view.type = 'kanban';
-                };
+                default_view.type !== 'kanban' &&
+                this.views.kanban) {
+                default_view.type = 'kanban';
+            }
             return default_view;
         },
     });
 
+    // FieldStatus (responsive fold)
+    RelationalFields.FieldStatus.include({
+        _renderQWebValues: function () {
+            return {
+                selections: this.status_information, // Needed to preserve order
+                has_folded: _.filter(this.status_information, {'selected': false}).length > 0,
+                clickable: !!this.attrs.clickable,
+            };
+        },
+
+        _render: function () {
+            // FIXME: Odoo framework creates view values & render qweb in the
+            //     same method. This cause a "double render" process to use
+            //     new custom values.
+            this._super.apply(this, arguments);
+            this.$el.html(qweb.render("FieldStatus.content", this._renderQWebValues()));
+        }
+    });
+
+    // Responsive view "action" buttons
+    FormRenderer.include({
+        _renderHeaderButtons: function (node) {
+            var self = this;
+            var $buttons = this._super(node);
+
+            var $container = $(qweb.render('web_responsive.MenuStatusbarButtons'));
+            $container.find('.o_statusbar_buttons_base').append($buttons);
+
+            var $dropdownMenu = $container.find('.dropdown-menu');
+            _.each(node.children, function (child) {
+                if (child.tag === 'button') {
+                    $dropdownMenu.append($('<LI>').append(self._renderHeaderButton(child)));
+                }
+            });
+
+            return $container;
+        }
+    });
+
+
     return {
         'AppDrawer': AppDrawer,
-        'SearchView': SearchView,
-        'Menu': Menu,
-        'ViewManager': ViewManager,
     };
 
 });
